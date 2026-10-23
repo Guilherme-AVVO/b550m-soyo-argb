@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=SOYO ARGB
+Comment=Iluminação ARGB da SOYO B550M
+Exec=soyo-argb-gui
+Icon=preferences-color
+Terminal=false
+Categories=Settings;HardwareSettings;

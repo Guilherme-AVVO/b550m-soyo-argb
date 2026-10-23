@@ -1,0 +1,3 @@
+# Só para a engenharia reversa: deixa o grupo wireshark ler /dev/usbmonN.
+# O dumpcap descarta CAP_DAC_OVERRIDE antes de abrir o usbmon, então a permissão precisa vir do nó.
+SUBSYSTEM=="usbmon", GROUP="wireshark", MODE="0640"

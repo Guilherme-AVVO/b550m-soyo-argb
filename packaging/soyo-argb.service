@@ -1,0 +1,9 @@
+[Unit]
+Description=SOYO B550M ARGB (reaplica iluminação)
+
+[Service]
+ExecStart=%h/.local/bin/soyo-argb daemon
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
