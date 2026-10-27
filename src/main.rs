@@ -48,6 +48,16 @@ enum Cmd {
         #[arg(long)]
         direction: Option<Direction>,
     },
+    /// Troca as cores das zonas pelas de uma paleta (ex.: matugen), mantendo modo, brilho, velocidade e
+    /// direção; salva e aplica só o que mudou
+    Recolor {
+        /// Nova cor 1 de toda zona cujo modo usa cor (rrggbb ou #rrggbb)
+        #[arg(long)]
+        color: Rgb,
+        /// Nova cor 2 das zonas que já usam uma segunda cor
+        #[arg(long)]
+        color2: Option<Rgb>,
+    },
     /// Define a quantidade de LEDs de um conector ARGB, salva e aplica
     LedCount {
         /// 1..3
@@ -104,6 +114,19 @@ fn run() -> Result<()> {
                 vec![id]
             };
             config::save(&path, &cfg)?;
+            config::apply(&cfg, &Device::open()?, Scope::Zones(&zones))
+        }
+        Cmd::Recolor { color, color2 } => {
+            let mut cfg = config::load(&path)?;
+            let before = cfg.clone();
+            let zones = cfg.recolor(color, color2);
+            if cfg == before {
+                return Ok(());
+            }
+            config::save(&path, &cfg)?;
+            if zones.is_empty() {
+                return Ok(());
+            }
             config::apply(&cfg, &Device::open()?, Scope::Zones(&zones))
         }
         Cmd::LedCount { header, count } => {

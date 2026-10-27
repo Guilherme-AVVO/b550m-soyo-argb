@@ -88,6 +88,22 @@ impl Config {
         }
     }
 
+    /// Troca as cores que cada efeito já usa: `color` em todo modo com cor, `color2` só onde já estava
+    /// definida. Modo, brilho, velocidade, direção e cor aleatória não mudam. Devolve as zonas que precisam
+    /// ser regravadas no dispositivo: todas se o efeito global mudou, senão as zonas avulsas que mudaram.
+    pub fn recolor(&mut self, color: Rgb, color2: Option<Rgb>) -> Vec<u8> {
+        let changed: Vec<u8> = self
+            .zones
+            .iter_mut()
+            .filter_map(|z| recolor_effect(&mut z.effect, color, color2).then_some(z.id))
+            .collect();
+        match self.global.as_mut().map(|g| recolor_effect(g, color, color2)) {
+            Some(true) => ZONES.collect(),
+            Some(false) => Vec::new(),
+            None => changed,
+        }
+    }
+
     pub fn validate(&self) -> Result<()> {
         if let Some(g) = &self.global {
             g.record().context("[global]")?;
@@ -110,6 +126,17 @@ impl Config {
         }
         Ok(())
     }
+}
+
+fn recolor_effect(e: &mut ZoneEffect, color: Rgb, color2: Option<Rgb>) -> bool {
+    let before = (e.color, e.color2);
+    if e.color.is_some() {
+        e.color = Some(color);
+    }
+    if let (Some(_), Some(c2)) = (e.color2, color2) {
+        e.color2 = Some(c2);
+    }
+    (e.color, e.color2) != before
 }
 
 pub fn default_path() -> Result<PathBuf> {
@@ -189,5 +216,47 @@ pub fn apply(cfg: &Config, dev: &Device, scope: Scope) -> Result<()> {
             }
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PALETTE: Rgb = Rgb(0xc2, 0xc6, 0xd5);
+    const PALETTE2: Rgb = Rgb(0xd4, 0xc4, 0xac);
+
+    fn effect(mode: Mode, color: Option<Rgb>, color2: Option<Rgb>) -> ZoneEffect {
+        ZoneEffect { color, color2, speed: Some(4), brightness: Some(9), ..ZoneEffect::new(mode) }
+    }
+
+    #[test]
+    fn recolor_keeps_effect_and_only_fills_colors_in_use() {
+        let red = Some(Rgb(0xff, 0, 0));
+        let mut cfg = Config {
+            global: None,
+            zones: vec![
+                ZoneConfig { id: 1, effect: effect(Mode::Breathing, red, None) },
+                ZoneConfig { id: 2, effect: effect(Mode::Marquee, red, Some(Rgb(0, 0xff, 0))) },
+                ZoneConfig { id: 3, effect: effect(Mode::Spectrum, None, None) },
+            ],
+            led_count: LedCount::default(),
+        };
+        assert_eq!(cfg.recolor(PALETTE, Some(PALETTE2)), vec![1, 2]);
+        assert_eq!(cfg.zone(1), Some(&effect(Mode::Breathing, Some(PALETTE), None)));
+        assert_eq!(cfg.zone(2), Some(&effect(Mode::Marquee, Some(PALETTE), Some(PALETTE2))));
+        assert_eq!(cfg.zone(3), Some(&effect(Mode::Spectrum, None, None)));
+        // Mesma paleta de novo: nada a regravar na EEPROM.
+        assert!(cfg.recolor(PALETTE, Some(PALETTE2)).is_empty());
+    }
+
+    #[test]
+    fn recolor_with_global_rewrites_every_zone_only_when_global_changes() {
+        let mut cfg = Config { global: Some(default_effect()), ..Config::default() };
+        assert_eq!(cfg.recolor(PALETTE, None), ZONES.collect::<Vec<_>>());
+        cfg.global = Some(ZoneEffect::new(Mode::Wave));
+        assert!(cfg.recolor(Rgb(1, 2, 3), None).is_empty());
+        // As zonas avulsas guardadas também seguem a paleta, para quando o controle global for desligado.
+        assert_eq!(cfg.zone(1).and_then(|z| z.color), Some(Rgb(1, 2, 3)));
     }
 }
